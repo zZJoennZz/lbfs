@@ -200,6 +200,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 import logging
+import shutil
 import traceback
 import os
 from .models import Folder, File, Share
@@ -210,7 +211,6 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
-# Add this decorator to handle CSRF for all views
 @method_decorator(csrf_exempt, name='dispatch')
 class FolderListCreateView(generics.ListCreateAPIView):
     serializer_class = FolderSerializer
@@ -243,6 +243,125 @@ class FolderDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Folder.objects.filter(
             Q(owner=user) | Q(participants=user)
         ).distinct()
+
+    def delete(self, request, *args, **kwargs):
+        print("\n=== FOLDER DELETE DEBUG ===")
+        print(f"User: {request.user} (ID: {request.user.id})")
+        print(f"Folder ID: {kwargs.get('pk')}")
+        
+        try:
+            # Try to get the folder instance
+            try:
+                instance = self.get_object()
+                print(f"Found folder: {instance.name}")
+                print(f"Folder owner: {instance.owner.username} (ID: {instance.owner.id})")
+            except Http404:
+                print(f"Folder with ID {kwargs.get('pk')} not found in database")
+                return Response(
+                    {'message': 'Folder already deleted'},
+                    status=status.HTTP_200_OK
+                )
+            
+            # Check if user has permission to delete (only owner can delete)
+            if instance.owner != request.user:
+                print(f"Permission denied: User {request.user.id} trying to delete folder owned by {instance.owner.id}")
+                return Response(
+                    {'error': 'Only the owner can delete this folder'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Get all files in this folder and subfolders
+            files_to_delete = []
+            
+            def collect_files(folder):
+                """Recursively collect all files in folder and subfolders"""
+                # Files in current folder
+                for file in folder.files.all():
+                    files_to_delete.append(file)
+                    print(f"  Found file: {file.name} (ID: {file.id})")
+                
+                # Files in subfolders
+                for subfolder in folder.subfolders.all():
+                    collect_files(subfolder)
+            
+            collect_files(instance)
+            print(f"Total files to delete: {len(files_to_delete)}")
+            
+            # Store folder info for response
+            folder_id = instance.id
+            folder_name = instance.name
+            
+            # Delete all physical files first
+            deleted_files = []
+            failed_files = []
+            
+            for file in files_to_delete:
+                try:
+                    if file.file:
+                        file_path = file.file.path
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                            print(f"  Deleted file: {file_path}")
+                            deleted_files.append(file.name)
+                        else:
+                            print(f"  File not found: {file_path}")
+                except Exception as e:
+                    print(f"  Error deleting file {file.name}: {e}")
+                    failed_files.append(file.name)
+            
+            # Delete all database records (cascade will handle folders)
+            # But we need to delete files first to avoid FK constraints
+            for file in files_to_delete:
+                file.delete()
+                print(f"  Deleted file record: {file.name}")
+            
+            # Now delete the folder (this will cascade to subfolders)
+            folder_path = None
+            if instance.name:
+                # Check if there's a corresponding physical folder
+                potential_path = os.path.join(settings.MEDIA_ROOT, 'uploads', instance.name)
+                if os.path.exists(potential_path) and os.path.isdir(potential_path):
+                    folder_path = potential_path
+            
+            instance.delete()
+            print(f"Deleted folder record: {folder_name}")
+            
+            # Try to delete physical folder if it exists and is empty
+            if folder_path and os.path.exists(folder_path):
+                try:
+                    # Check if folder is empty
+                    if not os.listdir(folder_path):
+                        os.rmdir(folder_path)
+                        print(f"Deleted empty folder: {folder_path}")
+                    else:
+                        print(f"Folder not empty, skipping: {folder_path}")
+                except Exception as e:
+                    print(f"Error deleting folder {folder_path}: {e}")
+            
+            # Prepare response message
+            message = f'Folder "{folder_name}" deleted successfully'
+            if deleted_files:
+                message += f'. Deleted {len(deleted_files)} files'
+            if failed_files:
+                message += f'. Failed to delete {len(failed_files)} files'
+            
+            return Response(
+                {
+                    'message': message,
+                    'deleted_files': len(deleted_files),
+                    'failed_files': failed_files if failed_files else None
+                },
+                status=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            print(f"!!! ERROR IN FOLDER DELETE: {str(e)}")
+            print("Traceback:")
+            traceback.print_exc()
+            return Response(
+                {'error': f'Failed to delete folder: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def options(self, request, *args, **kwargs):
         response = super().options(request, *args, **kwargs)

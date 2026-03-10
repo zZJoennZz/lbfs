@@ -208,7 +208,21 @@ export const login = async (username: string, password: string) => {
 };
 
 export const logout = async () => {
-  return api.post('/users/logout/');
+  try {
+    const response = await api.post('/users/logout/');
+
+    // Clear CSRF token from cookies
+    if (typeof document !== 'undefined') {
+      document.cookie = 'csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie = 'sessionid=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie = 'session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    }
+
+    return response;
+  } catch (error) {
+    console.error('Logout API error:', error);
+    throw error;
+  }
 };
 
 export const getCurrentUser = () => api.get('/users/me/');

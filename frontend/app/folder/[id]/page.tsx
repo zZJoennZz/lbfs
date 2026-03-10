@@ -17,7 +17,24 @@ import {
   shareItem,
   downloadFile,
 } from '@/lib/api';
-import { DocumentIcon, ArrowUpTrayIcon, UserPlusIcon, TrashIcon, XMarkIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
+import {
+  DocumentIcon,
+  ArrowUpTrayIcon,
+  UserPlusIcon,
+  TrashIcon,
+  XMarkIcon,
+  PaperAirplaneIcon,
+  UsersIcon,
+  PhotoIcon,
+  MusicalNoteIcon,
+  VideoCameraIcon,
+  ChevronLeftIcon,
+  MagnifyingGlassIcon,
+  Squares2X2Icon,
+  ListBulletIcon,
+  ClockIcon,
+  ArrowDownTrayIcon,
+} from '@heroicons/react/24/outline';
 import { useDropzone } from 'react-dropzone';
 import PageLayout from '@/components/layout/PageLayout';
 
@@ -36,6 +53,8 @@ export default function FolderPage() {
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [shareType, setShareType] = useState<'FOLDER' | 'FILE'>('FOLDER');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [fileSearch, setFileSearch] = useState('');
 
   useEffect(() => {
     if (id) {
@@ -77,8 +96,8 @@ export default function FolderPage() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
 
-  const handleDeleteFile = async (fileId: number) => {
-    if (confirm('Are you sure you want to delete this file?')) {
+  const handleDeleteFile = async (fileId: number, fileName: string) => {
+    if (confirm(`Are you sure you want to delete "${fileName}"?`)) {
       try {
         await deleteFile(fileId);
         showToast('File deleted successfully', 'success');
@@ -146,23 +165,56 @@ export default function FolderPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const getFileIcon = (mimeType: string) => {
-    if (mimeType.startsWith('image/')) return '🖼️';
-    if (mimeType.startsWith('video/')) return '🎥';
-    if (mimeType.startsWith('audio/')) return '🎵';
-    if (mimeType.includes('pdf')) return '📄';
-    if (mimeType.includes('word') || mimeType.includes('document')) return '📝';
-    if (mimeType.includes('excel') || mimeType.includes('sheet')) return '📊';
-    if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📽️';
-    if (mimeType.includes('zip') || mimeType.includes('compressed')) return '🗜️';
-    return '📎';
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
   };
+
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.startsWith('image/')) {
+      return <PhotoIcon className="h-8 w-8 text-orange-500" />;
+    }
+    if (mimeType.startsWith('video/')) {
+      return <VideoCameraIcon className="h-8 w-8 text-orange-500" />;
+    }
+    if (mimeType.startsWith('audio/')) {
+      return <MusicalNoteIcon className="h-8 w-8 text-orange-500" />;
+    }
+    return <DocumentIcon className="h-8 w-8 text-gray-400" />;
+  };
+
+  // Filter files based on search
+  const filteredFiles = files.filter((file) => file.name.toLowerCase().includes(fileSearch.toLowerCase()));
+
+  // Custom right content for folder page
+  const folderRightContent = (
+    <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-1 bg-gray-50 px-3 py-1.5 rounded-lg">
+        <UsersIcon className="h-4 w-4 text-gray-400" />
+        <span className="text-sm font-medium text-gray-600">{participants.length}</span>
+      </div>
+      <button
+        onClick={() => openShareModal('FOLDER')}
+        className="inline-flex items-center px-3 py-1.5 bg-lime-500 hover:bg-lime-600 text-white text-sm font-medium rounded-lg transition-colors"
+      >
+        <UserPlusIcon className="h-4 w-4 mr-1" />
+        Share
+      </button>
+    </div>
+  );
 
   if (loading) {
     return (
       <PageLayout title="Loading..." showBackButton>
         <div className="flex items-center justify-center h-64">
-          <div className="text-xl text-gray-600">Loading folder...</div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-lime-600"></div>
         </div>
       </PageLayout>
     );
@@ -171,44 +223,49 @@ export default function FolderPage() {
   if (!folder) {
     return (
       <PageLayout title="Not Found" showBackButton>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-xl text-red-600">Folder not found</div>
+        <div className="text-center py-16">
+          <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <DocumentIcon className="h-10 w-10 text-orange-600" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-800">Folder not found</h3>
         </div>
       </PageLayout>
     );
   }
 
-  // Custom right content for folder page
-  const folderRightContent = (
-    <>
-      <span className="text-sm text-gray-600">Owner: {folder.owner_username}</span>
-      <button
-        onClick={() => openShareModal('FOLDER')}
-        className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-      >
-        <UserPlusIcon className="h-4 w-4 mr-1" />
-        Share Folder
-      </button>
-    </>
-  );
-
   return (
     <PageLayout title={folder.name} showBackButton rightContent={folderRightContent}>
-      {/* Participants Section */}
-      <div className="mb-6">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Participants ({participants.length})</h3>
-            <div className="flex flex-wrap gap-2">
-              {participants.map((participant) => (
-                <div key={participant.id} className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
-                  {participant.username}
-                  {participant.id === folder.owner && <span className="ml-1 text-xs text-gray-500">(owner)</span>}
-                </div>
-              ))}
-              {participants.length === 0 && <p className="text-sm text-gray-500">No participants yet</p>}
+      {/* Folder Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-gray-500">Total Files</span>
+            <div className="w-8 h-8 bg-lime-100 rounded-lg flex items-center justify-center">
+              <DocumentIcon className="h-4 w-4 text-lime-600" />
             </div>
           </div>
+          <p className="text-2xl font-bold text-gray-800">{files.length}</p>
+        </div>
+
+        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-gray-500">Participants</span>
+            <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+              <UsersIcon className="h-4 w-4 text-orange-600" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-gray-800">{participants.length}</p>
+          {participants.length > 0 && <p className="mt-1 text-xs text-gray-500">{participants.map((p) => p.username).join(', ')}</p>}
+        </div>
+
+        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-gray-500">Total Size</span>
+            <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+              <ClockIcon className="h-4 w-4 text-gray-600" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-gray-800">{formatFileSize(files.reduce((acc, file) => acc + file.size, 0))}</p>
         </div>
       </div>
 
@@ -216,154 +273,273 @@ export default function FolderPage() {
       <div className="mb-6">
         <div
           {...getRootProps()}
-          className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-            isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+            isDragActive ? 'border-lime-500 bg-lime-50' : 'border-gray-200 hover:border-lime-300 hover:bg-gray-50'
           }`}
         >
           <input {...getInputProps()} />
-          <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <p className="mt-2 text-sm text-gray-600">{isDragActive ? 'Drop the files here...' : 'Drag & drop files here, or click to select'}</p>
-          {uploading && <p className="mt-2 text-sm text-blue-600">Uploading...</p>}
+          <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-gray-400 mb-3" />
+          <p className="text-gray-600 font-medium mb-1">{isDragActive ? 'Drop the files here...' : 'Drag & drop files here'}</p>
+          <p className="text-sm text-gray-500">or click to select files</p>
+          {uploading && (
+            <div className="mt-4 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-lime-600 mr-2"></div>
+              <span className="text-sm text-gray-600">Uploading...</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Files List */}
-      <div>
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          <ul className="divide-y divide-gray-200">
-            {files.map((file) => (
-              <li key={file.id} className="px-4 py-4 sm:px-6 hover:bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center min-w-0 flex-1">
-                    <div className="flex-shrink-0 text-2xl mr-3">{getFileIcon(file.mime_type)}</div>
-                    <div className="min-w-0 flex-1">
-                      <div>
+      {/* Files Header */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <h3 className="font-semibold text-gray-800">Files ({files.length})</h3>
+
+            <div className="flex items-center space-x-3">
+              {/* Search */}
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search files..."
+                  value={fileSearch}
+                  onChange={(e) => setFileSearch(e.target.value)}
+                  className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-lime-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* View Toggle */}
+              <div className="flex items-center border border-gray-200 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-2 rounded-md transition-colors ${
+                    viewMode === 'grid' ? 'bg-lime-100 text-lime-600' : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  <Squares2X2Icon className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-2 rounded-md transition-colors ${
+                    viewMode === 'list' ? 'bg-lime-100 text-lime-600' : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  <ListBulletIcon className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Files Display */}
+        {filteredFiles.length > 0 ? (
+          viewMode === 'grid' ? (
+            // Grid View
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredFiles.map((file) => (
+                <div
+                  key={file.id}
+                  className="group relative bg-white border border-gray-100 rounded-xl hover:shadow-md transition-all duration-200 overflow-hidden"
+                >
+                  <div className="p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">{getFileIcon(file.mime_type)}</div>
+                      <div className="flex items-center space-x-1">
                         <button
-                          onClick={() => handleFileClick(file)}
-                          className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline text-left"
+                          onClick={() => openShareModal('FILE', file)}
+                          className="p-1.5 text-gray-400 hover:text-lime-600 hover:bg-lime-50 rounded-lg transition-colors"
+                          title="Share file"
                         >
-                          {file.name}
+                          <PaperAirplaneIcon className="h-4 w-4" />
                         </button>
-                        <div className="mt-1 flex items-center text-xs text-gray-500 space-x-2">
-                          <span>{formatFileSize(file.size)}</span>
-                          <span>•</span>
-                          <span>Uploaded by {file.uploaded_by_username}</span>
-                          <span>•</span>
-                          <span>{new Date(file.created_at).toLocaleDateString()}</span>
-                        </div>
+                        {user?.id === file.uploaded_by && (
+                          <button
+                            onClick={() => handleDeleteFile(file.id, file.name)}
+                            className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            title="Delete file"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
-                  </div>
-                  <div className="ml-5 flex-shrink-0 flex space-x-2">
-                    <button
-                      onClick={() => openShareModal('FILE', file)}
-                      className="inline-flex items-center p-2 border border-gray-300 rounded-full text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none"
-                      title="Share file"
-                    >
-                      <PaperAirplaneIcon className="h-4 w-4" />
+
+                    <button onClick={() => handleFileClick(file)} className="text-left w-full">
+                      <h4 className="font-medium text-gray-800 mb-1 truncate hover:text-lime-600">{file.name}</h4>
+                      <div className="flex items-center text-xs text-gray-500 space-x-2">
+                        <span>{formatFileSize(file.size)}</span>
+                        <span>•</span>
+                        <span>{formatDate(file.created_at)}</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">by {file.uploaded_by_username}</p>
                     </button>
-                    {user?.id === file.uploaded_by && (
-                      <button
-                        onClick={() => handleDeleteFile(file.id)}
-                        className="inline-flex items-center p-2 border border-gray-300 rounded-full text-red-400 hover:text-red-500 hover:bg-red-50 focus:outline-none"
-                        title="Delete file"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                      </button>
-                    )}
                   </div>
                 </div>
-              </li>
-            ))}
-            {files.length === 0 && (
-              <li className="px-4 py-8 text-center text-gray-500">No files in this folder yet. Upload some files to get started!</li>
+              ))}
+            </div>
+          ) : (
+            // List View
+            <div className="divide-y divide-gray-100">
+              {filteredFiles.map((file) => (
+                <div key={file.id} className="group hover:bg-gray-50 transition-colors">
+                  <div className="px-4 py-3 flex items-center">
+                    <div className="flex-shrink-0 mr-4">{getFileIcon(file.mime_type)}</div>
+
+                    <div className="flex-1 min-w-0">
+                      <button onClick={() => handleFileClick(file)} className="text-left w-full">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-medium text-gray-800 group-hover:text-lime-600">{file.name}</h4>
+                            <div className="flex items-center text-xs text-gray-500 space-x-3 mt-1">
+                              <span>{formatFileSize(file.size)}</span>
+                              <span>•</span>
+                              <span>Uploaded by {file.uploaded_by_username}</span>
+                              <span>•</span>
+                              <span>{formatDate(file.created_at)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center space-x-2 ml-4">
+                      <button
+                        onClick={() => openShareModal('FILE', file)}
+                        className="p-2 text-gray-400 hover:text-lime-600 hover:bg-lime-50 rounded-lg transition-colors"
+                        title="Share file"
+                      >
+                        <PaperAirplaneIcon className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={() => handleFileClick(file)}
+                        className="p-2 text-gray-400 hover:text-lime-600 hover:bg-lime-50 rounded-lg transition-colors"
+                        title="Download file"
+                      >
+                        <ArrowDownTrayIcon className="h-5 w-5" />
+                      </button>
+                      {user?.id === file.uploaded_by && (
+                        <button
+                          onClick={() => handleDeleteFile(file.id, file.name)}
+                          className="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                          title="Delete file"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          // Empty State
+          <div className="text-center py-16">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <DocumentIcon className="h-8 w-8 text-gray-400" />
+            </div>
+            <h3 className="text-sm font-medium text-gray-800 mb-1">No files found</h3>
+            <p className="text-sm text-gray-500 mb-4">{fileSearch ? 'No files match your search' : 'Upload files to get started'}</p>
+            {fileSearch ? (
+              <button
+                onClick={() => setFileSearch('')}
+                className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+              >
+                Clear search
+              </button>
+            ) : (
+              <div {...getRootProps()} className="inline-block">
+                <input {...getInputProps()} />
+                <button className="inline-flex items-center px-4 py-2 bg-lime-500 hover:bg-lime-600 text-white rounded-lg transition-colors text-sm">
+                  <ArrowUpTrayIcon className="h-4 w-4 mr-2" />
+                  Upload Files
+                </button>
+              </div>
             )}
-          </ul>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Share Modal */}
       {showShareModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
+          <div className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm transition-opacity" />
 
           <div className="fixed inset-0 z-10 overflow-y-auto">
             <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-              <div className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
-                <div className="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
-                  <div className="sm:flex sm:items-start">
-                    <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left w-full">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-semibold leading-6 text-gray-900">Share {shareType === 'FOLDER' ? 'Folder' : 'File'}</h3>
-                        <button
-                          onClick={() => {
-                            setShowShareModal(false);
-                            setSelectedFile(null);
-                            setSearchQuery('');
-                            setSearchResults([]);
-                          }}
-                          className="rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none"
-                        >
-                          <XMarkIcon className="h-6 w-6" />
-                        </button>
-                      </div>
-
-                      {shareType === 'FILE' && selectedFile && (
-                        <div className="mb-4 p-3 bg-gray-50 rounded-md">
-                          <p className="text-sm text-gray-600">
-                            Sharing file: <span className="font-medium text-gray-900">{selectedFile.name}</span>
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="mt-2">
-                        <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={(e) => handleSearch(e.target.value)}
-                          placeholder="Search users by username..."
-                          className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
-                          autoFocus
-                        />
-                      </div>
-
-                      {searchQuery.length > 2 && (
-                        <div className="mt-4">
-                          {searchResults.length > 0 ? (
-                            <div className="max-h-60 overflow-y-auto divide-y divide-gray-200">
-                              {searchResults.map((result) => (
-                                <div key={result.id} className="flex items-center justify-between py-3">
-                                  <div className="flex items-center min-w-0">
-                                    <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-medium flex-shrink-0">
-                                      {result.username[0].toUpperCase()}
-                                    </div>
-                                    <div className="ml-3 min-w-0">
-                                      <p className="text-sm font-medium text-gray-900 truncate">{result.username}</p>
-                                      <p className="text-xs text-gray-500 truncate">{result.email}</p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => handleShare(result.id)}
-                                    className="ml-4 inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                                  >
-                                    Share
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-gray-500 text-center py-4">No users found matching "{searchQuery}"</p>
-                          )}
-                        </div>
-                      )}
-
-                      {searchQuery.length > 0 && searchQuery.length <= 2 && (
-                        <p className="mt-4 text-sm text-gray-500 text-center">Type at least 3 characters to search</p>
-                      )}
-
-                      {searchQuery.length === 0 && <p className="mt-4 text-sm text-gray-500 text-center">Search for users to share with</p>}
-                    </div>
+              <div className="relative transform overflow-hidden rounded-xl bg-white shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+                <div className="bg-white px-6 py-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Share {shareType === 'FOLDER' ? 'Folder' : 'File'}</h3>
+                    <button
+                      onClick={() => {
+                        setShowShareModal(false);
+                        setSelectedFile(null);
+                        setSearchQuery('');
+                        setSearchResults([]);
+                      }}
+                      className="text-gray-400 hover:text-gray-500"
+                    >
+                      <XMarkIcon className="h-6 w-6" />
+                    </button>
                   </div>
+
+                  {shareType === 'FILE' && selectedFile && (
+                    <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                      <p className="text-sm text-gray-600">
+                        Sharing: <span className="font-medium text-gray-800">{selectedFile.name}</span>
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="relative">
+                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => handleSearch(e.target.value)}
+                      placeholder="Search users by username..."
+                      className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-lime-500 focus:border-transparent"
+                      autoFocus
+                    />
+                  </div>
+
+                  {searchQuery.length > 2 && (
+                    <div className="mt-4 max-h-60 overflow-y-auto">
+                      {searchResults.length > 0 ? (
+                        <div className="space-y-2">
+                          {searchResults.map((result) => (
+                            <div key={result.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors">
+                              <div className="flex items-center min-w-0">
+                                <div className="h-10 w-10 rounded-full bg-lime-100 flex items-center justify-center text-lime-700 font-medium flex-shrink-0">
+                                  {result.username[0].toUpperCase()}
+                                </div>
+                                <div className="ml-3 min-w-0">
+                                  <p className="text-sm font-medium text-gray-800 truncate">{result.username}</p>
+                                  <p className="text-xs text-gray-500 truncate">{result.email}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleShare(result.id)}
+                                className="ml-4 px-3 py-1.5 bg-lime-500 hover:bg-lime-600 text-white text-sm font-medium rounded-lg transition-colors"
+                              >
+                                Share
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500 text-center py-4">No users found matching "{searchQuery}"</p>
+                      )}
+                    </div>
+                  )}
+
+                  {searchQuery.length > 0 && searchQuery.length <= 2 && (
+                    <p className="mt-4 text-sm text-gray-500 text-center">Type at least 3 characters to search</p>
+                  )}
+
+                  {searchQuery.length === 0 && <p className="mt-4 text-sm text-gray-500 text-center">Search for users to share with</p>}
                 </div>
               </div>
             </div>

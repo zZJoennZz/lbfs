@@ -43,9 +43,51 @@ class LoginView(APIView):
         return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
 class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
     def post(self, request):
-        logout(request)
-        return Response({'message': 'Logged out successfully'})
+        print("\n=== LOGOUT DEBUG ===")
+        print(f"User logging out: {request.user.username} (ID: {request.user.id})")
+        print(f"Session key before logout: {request.session.session_key}")
+        
+        try:
+            # Perform logout
+            logout(request)
+            print("Logout successful")
+            
+            # Create response
+            response = Response(
+                {'message': 'Logged out successfully'},
+                status=status.HTTP_200_OK
+            )
+            
+            # Clear session cookie
+            response.delete_cookie('sessionid')
+            response.delete_cookie('csrftoken')
+            response.delete_cookie('session')
+            
+            # Add CORS headers
+            response['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+            response['Access-Control-Allow-Credentials'] = 'true'
+            
+            return response
+            
+        except Exception as e:
+            print(f"Error during logout: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': f'Logout failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def options(self, request, *args, **kwargs):
+        response = HttpResponse()
+        response['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+        response['Access-Control-Allow-Credentials'] = 'true'
+        response['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, X-CSRFToken'
+        return response
 
 class CurrentUserView(APIView):
     def get(self, request):

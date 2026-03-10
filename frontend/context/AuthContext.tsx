@@ -41,7 +41,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError(null);
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
-        // User not logged in - this is expected
         setUser(null);
       } else {
         console.error('Error checking user:', error);
@@ -54,11 +53,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setError(null);
     try {
       const response = await apiLogin(username, password);
-      // The response might be just the user object or contain a user property
       const userData = response.data.user || response.data;
       setUser(userData);
-
-      // Verify login was successful
       await checkUser();
     } catch (error: any) {
       console.error('Login error:', error);
@@ -77,9 +73,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       await apiLogout();
+
+      // Clear all auth state
       setUser(null);
+      setError(null);
+
+      // Clear any stored data
+      if (typeof window !== 'undefined') {
+        // Clear localStorage items if any
+        localStorage.removeItem('user');
+        localStorage.removeItem('session');
+
+        // Clear cookies by setting expired dates
+        document.cookie.split(';').forEach(function (c) {
+          document.cookie = c.replace(/^ +/, '').replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
+        });
+      }
+
+      console.log('Logout completed, user state cleared');
     } catch (error) {
       console.error('Logout error:', error);
+
+      // Even if API fails, clear local state
+      setUser(null);
+
+      // Still try to redirect
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+
+      throw error;
     } finally {
       setLoading(false);
     }

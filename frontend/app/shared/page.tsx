@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 import { Folder, File, getFolders, getFiles } from '@/lib/api';
-import { FolderIcon, DocumentIcon, UserGroupIcon } from '@heroicons/react/24/outline';
+import { FolderIcon, DocumentIcon, UserGroupIcon, ArrowDownTrayIcon, ClockIcon, UserIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import PageLayout from '@/components/layout/PageLayout';
 
 interface SharedItem {
   id: number;
@@ -17,13 +19,16 @@ interface SharedItem {
   folder_id?: number;
   file_url?: string;
   mime_type?: string;
+  size?: number;
 }
 
 export default function SharedPage() {
   const { user, loading } = useAuth();
+  const { showToast } = useToast();
   const router = useRouter();
   const [sharedItems, setSharedItems] = useState<SharedItem[]>([]);
   const [filter, setFilter] = useState<'all' | 'folders' | 'files'>('all');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -38,11 +43,10 @@ export default function SharedPage() {
   }, [user]);
 
   const loadSharedItems = async () => {
+    setIsLoading(true);
     try {
-      // Get all folders and files shared with user
       const [foldersRes, filesRes] = await Promise.all([getFolders(), getFiles()]);
 
-      // Filter items where user is not the owner
       const sharedFolders = foldersRes.data
         .filter((folder: Folder) => folder.owner !== user?.id)
         .map((folder: Folder) => ({
@@ -66,11 +70,14 @@ export default function SharedPage() {
           folder_id: file.folder,
           file_url: file.file_url,
           mime_type: file.mime_type,
+          size: file.size,
         }));
 
       setSharedItems([...sharedFolders, ...sharedFiles]);
     } catch (error) {
-      console.error('Failed to load shared items', error);
+      showToast('Failed to load shared items', 'error');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -80,144 +87,184 @@ export default function SharedPage() {
     return true;
   });
 
-  const getFileIcon = (mimeType?: string) => {
-    if (!mimeType) return '📎';
-    if (mimeType.startsWith('image/')) return '🖼️';
-    if (mimeType.startsWith('video/')) return '🎥';
-    if (mimeType.startsWith('audio/')) return '🎵';
-    if (mimeType.includes('pdf')) return '📄';
-    return '📎';
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '';
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  if (loading) {
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  };
+
+  const getFileIcon = (mimeType?: string) => {
+    if (!mimeType) return <DocumentIcon className="h-8 w-8 text-gray-400" />;
+    if (mimeType.startsWith('image/')) {
+      return <div className="h-8 w-8 bg-orange-100 rounded-lg flex items-center justify-center">🖼️</div>;
+    }
+    if (mimeType.startsWith('video/')) {
+      return <div className="h-8 w-8 bg-orange-100 rounded-lg flex items-center justify-center">🎥</div>;
+    }
+    if (mimeType.startsWith('audio/')) {
+      return <div className="h-8 w-8 bg-orange-100 rounded-lg flex items-center justify-center">🎵</div>;
+    }
+    if (mimeType.includes('pdf')) {
+      return <div className="h-8 w-8 bg-orange-100 rounded-lg flex items-center justify-center">📄</div>;
+    }
+    return <DocumentIcon className="h-8 w-8 text-gray-400" />;
+  };
+
+  // Custom right content for shared page
+  const sharedRightContent = (
+    <div className="flex items-center space-x-2 bg-gray-50 px-4 py-2 rounded-lg">
+      <UserGroupIcon className="h-5 w-5 text-gray-400" />
+      <span className="text-sm font-medium text-gray-600">
+        {sharedItems.length} shared {sharedItems.length === 1 ? 'item' : 'items'}
+      </span>
+    </div>
+  );
+
+  if (loading || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
-      </div>
+      <PageLayout title="Shared With Me" showBackButton>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-lime-600"></div>
+        </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <button onClick={() => router.push('/dashboard')} className="text-gray-500 hover:text-gray-700 mr-4">
-                ← Back
-              </button>
-              <h1 className="text-xl font-semibold">Shared With Me</h1>
-            </div>
-            <div className="flex items-center">
-              <UserGroupIcon className="h-5 w-5 text-gray-400 mr-2" />
-              <span className="text-sm text-gray-600">{sharedItems.length} shared items</span>
-            </div>
-          </div>
+    <PageLayout title="Shared With Me" showBackButton rightContent={sharedRightContent}>
+      {/* Filters */}
+      <div className="mb-6">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-2 inline-flex">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filter === 'all' ? 'bg-lime-500 text-white' : 'text-gray-600 hover:text-lime-600 hover:bg-gray-50'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setFilter('folders')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filter === 'folders' ? 'bg-lime-500 text-white' : 'text-gray-600 hover:text-lime-600 hover:bg-gray-50'
+            }`}
+          >
+            Folders
+          </button>
+          <button
+            onClick={() => setFilter('files')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filter === 'files' ? 'bg-lime-500 text-white' : 'text-gray-600 hover:text-lime-600 hover:bg-gray-50'
+            }`}
+          >
+            Files
+          </button>
         </div>
-      </nav>
+      </div>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* Filters */}
-        <div className="px-4 sm:px-0 mb-6">
-          <div className="bg-white shadow rounded-lg p-4">
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-4 py-2 rounded-md text-sm font-medium ${
-                  filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setFilter('folders')}
-                className={`px-4 py-2 rounded-md text-sm font-medium ${
-                  filter === 'folders' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Folders
-              </button>
-              <button
-                onClick={() => setFilter('files')}
-                className={`px-4 py-2 rounded-md text-sm font-medium ${
-                  filter === 'files' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Files
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Shared Items List */}
+      {filteredItems.length > 0 ? (
+        <div className="space-y-3">
+          {filteredItems.map((item) => (
+            <div
+              key={`${item.type}-${item.id}`}
+              className="group bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden"
+            >
+              {item.type === 'folder' ? (
+                <Link href={`/folder/${item.id}`} className="block p-4">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0 mr-4">
+                      <div className="h-12 w-12 bg-lime-100 rounded-xl flex items-center justify-center">
+                        <FolderIcon className="h-6 w-6 text-lime-600" />
+                      </div>
+                    </div>
 
-        {/* Shared Items List */}
-        <div className="px-4 sm:px-0">
-          <div className="bg-white shadow overflow-hidden sm:rounded-md">
-            <ul className="divide-y divide-gray-200">
-              {filteredItems.map((item) => (
-                <li key={`${item.type}-${item.id}`} className="px-4 py-4 sm:px-6">
-                  {item.type === 'folder' ? (
-                    <Link href={`/folder/${item.id}`} className="block hover:bg-gray-50">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                          <FolderIcon className="h-8 w-8 text-blue-500" />
-                        </div>
-                        <div className="ml-4 flex-1">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-medium text-blue-600">{item.name}</p>
-                              <div className="mt-1 flex items-center text-xs text-gray-500 space-x-2">
-                                <span>Shared by {item.shared_by}</span>
-                                <span>•</span>
-                                <span>Owner: {item.owner}</span>
-                                <span>•</span>
-                                <span>{new Date(item.shared_at).toLocaleDateString()}</span>
-                              </div>
-                            </div>
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              Folder
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-base font-semibold text-gray-800 group-hover:text-lime-600 transition-colors">{item.name}</h3>
+                          <div className="flex items-center mt-1 text-xs text-gray-500 space-x-3">
+                            <span className="flex items-center">
+                              <UserIcon className="h-3 w-3 mr-1" />
+                              {item.shared_by}
+                            </span>
+                            <span className="flex items-center">
+                              <ClockIcon className="h-3 w-3 mr-1" />
+                              {formatDate(item.shared_at)}
                             </span>
                           </div>
                         </div>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-lime-50 text-lime-700">Folder</span>
                       </div>
-                    </Link>
-                  ) : (
-                    <a href={item.file_url} target="_blank" rel="noopener noreferrer" className="block hover:bg-gray-50">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 text-2xl">{getFileIcon(item.mime_type)}</div>
-                        <div className="ml-4 flex-1">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-medium text-blue-600">{item.name}</p>
-                              <div className="mt-1 flex items-center text-xs text-gray-500 space-x-2">
-                                <span>Shared by {item.shared_by}</span>
-                                <span>•</span>
-                                <span>Owner: {item.owner}</span>
-                                <span>•</span>
-                                <span>{new Date(item.shared_at).toLocaleDateString()}</span>
-                              </div>
-                            </div>
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              File
+                    </div>
+                  </div>
+                </Link>
+              ) : (
+                <a href={item.file_url} target="_blank" rel="noopener noreferrer" className="block p-4">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0 mr-4">{getFileIcon(item.mime_type)}</div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-base font-semibold text-gray-800 group-hover:text-lime-600 transition-colors">{item.name}</h3>
+                          <div className="flex items-center mt-1 text-xs text-gray-500 space-x-3">
+                            <span className="flex items-center">
+                              <UserIcon className="h-3 w-3 mr-1" />
+                              {item.shared_by}
                             </span>
+                            <span className="flex items-center">
+                              <ClockIcon className="h-3 w-3 mr-1" />
+                              {formatDate(item.shared_at)}
+                            </span>
+                            {item.size && (
+                              <>
+                                <span>•</span>
+                                <span>{formatFileSize(item.size)}</span>
+                              </>
+                            )}
                           </div>
                         </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-orange-50 text-orange-700">
+                            File
+                          </span>
+                          <button className="p-2 text-gray-400 hover:text-lime-600 hover:bg-gray-50 rounded-lg transition-colors">
+                            <ArrowDownTrayIcon className="h-5 w-5" />
+                          </button>
+                        </div>
                       </div>
-                    </a>
-                  )}
-                </li>
-              ))}
-
-              {filteredItems.length === 0 && (
-                <li className="px-4 py-12 text-center">
-                  <UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No shared items</h3>
-                  <p className="mt-1 text-sm text-gray-500">Items shared with you will appear here.</p>
-                </li>
+                    </div>
+                  </div>
+                </a>
               )}
-            </ul>
-          </div>
+            </div>
+          ))}
         </div>
-      </main>
-    </div>
+      ) : (
+        <div className="text-center py-16 bg-white rounded-2xl border border-gray-100">
+          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <UserGroupIcon className="h-10 w-10 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-800 mb-2">No shared items</h3>
+          <p className="text-gray-500 max-w-sm mx-auto">When someone shares a folder or file with you, it will appear here.</p>
+        </div>
+      )}
+    </PageLayout>
   );
 }
